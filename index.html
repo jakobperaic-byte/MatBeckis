@@ -55,6 +55,7 @@
   .more { padding: 10px 16px; color: var(--muted); font-size: 12px; text-align: center; }
   #map { height: 100%; }
   .pin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.5); }
+  .dark-tiles { filter: invert(1) hue-rotate(180deg) brightness(.9) contrast(.9); }
   .home { font-size: 26px; line-height: 26px; text-align: center; filter: drop-shadow(0 1px 2px rgba(0,0,0,.5)); }
   .leaflet-popup-content { font-size: 13px; min-width: 200px; }
   .leaflet-popup-content h3 { margin: 0 0 4px; font-size: 15px; }
@@ -158,7 +159,8 @@
 <script>
 "use strict";
 const DEFAULT_ADDRESS = "Kopparbacken 22, Spånga";
-const FALLBACK_CENTER = [59.3845, 17.9010]; // Spånga, om adressen inte kan slås upp
+// Kopparbacken 20–22 (hitta.se). Hårdkodat eftersom Nominatim blockerar sidor som öppnas som lokal fil.
+const FALLBACK_CENTER = [59.36575, 17.89463];
 const MAX_RADIUS_M = 10000;                 // 1 mil
 const KINDS = { restaurant: "Restaurang", fast_food: "Snabbmat", cafe: "Kafé" };
 const OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.private.coffee/api/interpreter", "https://overpass.kumi.systems/api/interpreter"];
@@ -220,11 +222,20 @@ function openForLunch(p) {
 // ---------- karta ----------
 const map = L.map("map", { zoomControl: true }).setView(FALLBACK_CENTER, 13);
 const dark = matchMedia("(prefers-color-scheme: dark)").matches;
-// CARTO:s kartbilder (OSM-data) – fungerar även när sidan öppnas som lokal fil, till skillnad från tile.openstreetmap.org.
-L.tileLayer(`https://{s}.basemaps.cartocdn.com/${dark ? "dark_all" : "rastertiles/voyager"}/{z}/{x}/{y}{r}.png`, {
-  maxZoom: 20, subdomains: "abcd",
-  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>',
-}).addTo(map);
+// Esri-kartor kräver varken nyckel eller Referer, så de fungerar även när index.html öppnas som lokal fil
+// (tile.openstreetmap.org och CARTO blockerar då).
+const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services/";
+const baseLayers = {
+  "Gatukarta": L.tileLayer(ESRI + "World_Street_Map/MapServer/tile/{z}/{y}/{x}", {
+    maxZoom: 19, className: dark ? "dark-tiles" : "", attribution: "Karta © Esri, HERE, Garmin, © OpenStreetMap" }),
+  "Satellit": L.tileLayer(ESRI + "World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+    maxZoom: 19, attribution: "Bild © Esri, Maxar, Earthstar Geographics" }),
+  "Terräng": L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
+    maxZoom: 17, attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, © <a href="https://opentopomap.org">OpenTopoMap</a>' }),
+};
+(baseLayers[store.get("baseLayer", "Gatukarta")] || baseLayers["Gatukarta"]).addTo(map);
+L.control.layers(baseLayers, null, { position: "topleft" }).addTo(map);
+map.on("baselayerchange", (e) => store.set("baseLayer", e.name));
 const cluster = L.markerClusterGroup({ maxClusterRadius: 45, disableClusteringAtZoom: 16 }).addTo(map);
 const ringLayer = L.layerGroup().addTo(map);
 let home = FALLBACK_CENTER, homeMarker = null, geoFailed = false;
@@ -251,6 +262,7 @@ function drawHome() {
 
 // ---------- data ----------
 async function geocode(q) {
+  if (q === DEFAULT_ADDRESS) return FALLBACK_CENTER;
   const cacheKey = "geo:" + q.toLowerCase();
   const cached = store.get(cacheKey);
   if (cached) return cached;
