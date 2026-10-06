@@ -161,7 +161,7 @@ const DEFAULT_ADDRESS = "Kopparbacken 22, Spånga";
 const FALLBACK_CENTER = [59.3845, 17.9010]; // Spånga, om adressen inte kan slås upp
 const MAX_RADIUS_M = 10000;                 // 1 mil
 const KINDS = { restaurant: "Restaurang", fast_food: "Snabbmat", cafe: "Kafé" };
-const OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"];
+const OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.private.coffee/api/interpreter", "https://overpass.kumi.systems/api/interpreter"];
 
 // ---------- lagring (kan vara blockerad, t.ex. i privat läge) ----------
 const store = {
@@ -220,12 +220,14 @@ function openForLunch(p) {
 // ---------- karta ----------
 const map = L.map("map", { zoomControl: true }).setView(FALLBACK_CENTER, 13);
 const dark = matchMedia("(prefers-color-scheme: dark)").matches;
-L.tileLayer(dark ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" : "https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-  maxZoom: 19, attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' + (dark ? " © CARTO" : ""),
+// CARTO:s kartbilder (OSM-data) – fungerar även när sidan öppnas som lokal fil, till skillnad från tile.openstreetmap.org.
+L.tileLayer(`https://{s}.basemaps.cartocdn.com/${dark ? "dark_all" : "rastertiles/voyager"}/{z}/{x}/{y}{r}.png`, {
+  maxZoom: 20, subdomains: "abcd",
+  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>',
 }).addTo(map);
 const cluster = L.markerClusterGroup({ maxClusterRadius: 45, disableClusteringAtZoom: 16 }).addTo(map);
 const ringLayer = L.layerGroup().addTo(map);
-let home = FALLBACK_CENTER, homeMarker = null;
+let home = FALLBACK_CENTER, homeMarker = null, geoFailed = false;
 let places = [], markers = new Map();
 
 const legend = L.control({ position: "topright" });
@@ -240,7 +242,7 @@ function drawHome() {
   if (homeMarker) homeMarker.remove();
   homeMarker = L.marker(home, { icon: L.divIcon({ className: "home", html: "🏠", iconSize: [26, 26] }), zIndexOffset: 1000, draggable: true })
     .addTo(map).bindTooltip(esc(address));
-  homeMarker.on("dragend", () => { home = [homeMarker.getLatLng().lat, homeMarker.getLatLng().lng]; address = "Egen position"; load(); });
+  homeMarker.on("dragend", () => { geoFailed = false; home = [homeMarker.getLatLng().lat, homeMarker.getLatLng().lng]; address = "Egen position"; load(); });
   ringLayer.clearLayers();
   for (const km of [1, 3, 5, 10]) {
     L.circle(home, { radius: km * 1000, color: "#c2410c", weight: 1, opacity: .5, fill: false, dashArray: "4 6", interactive: false }).addTo(ringLayer);
@@ -262,21 +264,26 @@ async function geocode(q) {
 }
 
 async function fetchPlaces(center) {
-  const q = `[out:json][timeout:60];
-    nwr(around:${MAX_RADIUS_M},${center[0]},${center[1]})[amenity~"^(restaurant|fast_food|cafe)$"][name];
+  // En rektangel är mycket billigare för Overpass än around:10000 – cirkeln filtreras fram här i stället.
+  const dLat = MAX_RADIUS_M / 111320, dLon = dLat / Math.cos(center[0] * Math.PI / 180);
+  const bbox = [center[0] - dLat, center[1] - dLon, center[0] + dLat, center[1] + dLon].map((x) => x.toFixed(5)).join(",");
+  const q = `[out:json][timeout:90][bbox:${bbox}];
+    nwr["amenity"~"^(restaurant|fast_food|cafe)$"]["name"];
     out center tags;`;
   let lastErr;
   for (const ep of OVERPASS) {
     try {
-      const res = await fetch(ep, { method: "POST", body: "data=" + encodeURIComponent(q) });
+      const res = await fetch(ep, { method: "POST", body: new URLSearchParams({ data: q }) });
       if (!res.ok) throw new Error("HTTP " + res.status);
       const j = await res.json();
+      // Overpass svarar 200 med tom lista + "remark" vid timeout/överbelastning – prova nästa server då.
+      if (!j.elements?.length) throw new Error(j.remark || "tomt svar");
       return j.elements.map((e) => {
         const lat = e.lat ?? e.center?.lat, lon = e.lon ?? e.center?.lon;
         return { id: e.type[0] + e.id, lat, lon, tags: e.tags, kind: e.tags.amenity, name: e.tags.name,
           cuisines: (e.tags.cuisine || "").split(";").map((s) => s.trim().toLowerCase()).filter(Boolean),
           dist: haversine(center, [lat, lon]) };
-      }).filter((p) => p.lat != null);
+      }).filter((p) => p.lat != null && p.dist <= MAX_RADIUS_M);
     } catch (err) { lastErr = err; }
   }
   throw lastErr;
@@ -389,7 +396,8 @@ function renderList() {
         ${open === true ? ' · <span class="open">öppet</span>' : open === false ? ' · <span class="closed">stängt</span>' : ""}</span></li>`;
   }).join("") + (current.length > MAX ? `<li class="more">…och ${current.length - MAX} till. Filtrera eller minska radien.</li>` : "")
     + (!current.length ? '<li class="more">Inga ställen matchar filtren.</li>' : "");
-  status(`${current.length} av ${places.length} ställen inom ${$("#radius").value.replace(".", ",")} km från ${address}`);
+  status(`${current.length} av ${places.length} ställen inom ${$("#radius").value.replace(".", ",")} km från ${address}`
+    + (geoFailed ? " (adressen hittades inte – dra 🏠 till rätt plats)" : ""));
 }
 function focusPlace(p) {
   const m = markerFor(p);
@@ -449,7 +457,7 @@ $("#settings").addEventListener("close", () => {
 });
 $("#useGps").addEventListener("click", () => {
   navigator.geolocation?.getCurrentPosition((pos) => {
-    $("#settings").close(); home = [pos.coords.latitude, pos.coords.longitude]; address = "din position"; load();
+    $("#settings").close(); home = [pos.coords.latitude, pos.coords.longitude]; address = "din position"; geoFailed = false; load();
   }, () => status("Kunde inte läsa din position."));
 });
 
@@ -472,8 +480,8 @@ async function load() {
 }
 async function start() {
   status("Letar upp " + address + "…");
-  try { home = await geocode(address); }
-  catch { home = FALLBACK_CENTER; status("Hittade inte adressen – använder Spånga centrum. Dra 🏠 för att flytta."); }
+  try { home = await geocode(address); geoFailed = false; }
+  catch { home = FALLBACK_CENTER; geoFailed = true; }
   load();
 }
 start();
