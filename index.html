@@ -238,7 +238,7 @@ L.control.layers(baseLayers, null, { position: "topleft" }).addTo(map);
 map.on("baselayerchange", (e) => store.set("baseLayer", e.name));
 const cluster = L.markerClusterGroup({ maxClusterRadius: 45, disableClusteringAtZoom: 16 }).addTo(map);
 const ringLayer = L.layerGroup().addTo(map);
-let home = FALLBACK_CENTER, homeMarker = null, geoFailed = false;
+let home = FALLBACK_CENTER, homeMarker = null, geoFailed = false, dataNote = "";
 let places = [], markers = new Map();
 
 const legend = L.control({ position: "topright" });
@@ -275,30 +275,54 @@ async function geocode(q) {
   return c;
 }
 
+const KEEP_TAGS = ["opening_hours", "diet:vegetarian", "diet:vegan", "website", "contact:website", "addr:street", "addr:housenumber"];
+const PLACES_TTL = 7 * 864e5;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Hämtar från Overpass (flera servrar, två varv, 45 s timeout per försök). Resultatet sparas i webbläsaren
+// i 7 dagar; om alla servrar fallerar används senast sparade lista oavsett ålder.
 async function fetchPlaces(center) {
+  const cacheKey = "places:" + center.map((x) => x.toFixed(3)).join(",");
+  const cached = store.get(cacheKey);
+  const toPlaces = (raw) => raw.map((p) => ({ ...p, dist: haversine(center, [p.lat, p.lon]) })).filter((p) => p.dist <= MAX_RADIUS_M);
+  if (cached && Date.now() - cached.ts < PLACES_TTL) return { places: toPlaces(cached.raw), ts: cached.ts };
+
   // En rektangel är mycket billigare för Overpass än around:10000 – cirkeln filtreras fram här i stället.
   const dLat = MAX_RADIUS_M / 111320, dLon = dLat / Math.cos(center[0] * Math.PI / 180);
   const bbox = [center[0] - dLat, center[1] - dLon, center[0] + dLat, center[1] + dLon].map((x) => x.toFixed(5)).join(",");
-  const q = `[out:json][timeout:90][bbox:${bbox}];
+  const q = `[out:json][timeout:60][bbox:${bbox}];
     nwr["amenity"~"^(restaurant|fast_food|cafe)$"]["name"];
     out center tags;`;
-  let lastErr;
-  for (const ep of OVERPASS) {
-    try {
-      const res = await fetch(ep, { method: "POST", body: new URLSearchParams({ data: q }) });
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      const j = await res.json();
-      // Overpass svarar 200 med tom lista + "remark" vid timeout/överbelastning – prova nästa server då.
-      if (!j.elements?.length) throw new Error(j.remark || "tomt svar");
-      return j.elements.map((e) => {
-        const lat = e.lat ?? e.center?.lat, lon = e.lon ?? e.center?.lon;
-        return { id: e.type[0] + e.id, lat, lon, tags: e.tags, kind: e.tags.amenity, name: e.tags.name,
-          cuisines: (e.tags.cuisine || "").split(";").map((s) => s.trim().toLowerCase()).filter(Boolean),
-          dist: haversine(center, [lat, lon]) };
-      }).filter((p) => p.lat != null && p.dist <= MAX_RADIUS_M);
-    } catch (err) { lastErr = err; }
+  const errors = [];
+  for (let round = 0; round < 2; round++) {
+    if (round) { status("Servrarna svarar inte – försöker igen…"); await sleep(4000); }
+    for (const ep of OVERPASS) {
+      const host = new URL(ep).host;
+      status(`Hämtar restauranger inom 1 mil från ${host}… (kan ta 10–30 s)`);
+      const ctrl = new AbortController(), timer = setTimeout(() => ctrl.abort(), 45000);
+      try {
+        const res = await fetch(ep, { method: "POST", body: new URLSearchParams({ data: q }), signal: ctrl.signal });
+        if (!res.ok) throw new Error(res.status === 429 ? "för många anrop (429)" : "HTTP " + res.status);
+        const j = await res.json();
+        // Overpass svarar 200 med tom lista + "remark" vid timeout/överbelastning – prova nästa server då.
+        if (!j.elements?.length) throw new Error(j.remark || "tomt svar");
+        const raw = j.elements.map((e) => {
+          const tags = {};
+          for (const k of KEEP_TAGS) if (e.tags[k]) tags[k] = e.tags[k];
+          return { id: e.type[0] + e.id, lat: e.lat ?? e.center?.lat, lon: e.lon ?? e.center?.lon, tags,
+            kind: e.tags.amenity, name: e.tags.name,
+            cuisines: (e.tags.cuisine || "").split(";").map((s) => s.trim().toLowerCase()).filter(Boolean) };
+        }).filter((p) => p.lat != null);
+        const ts = Date.now();
+        store.set(cacheKey, { ts, raw });
+        return { places: toPlaces(raw), ts };
+      } catch (err) {
+        errors.push(`${host}: ${err.name === "AbortError" ? "svarade inte inom 45 s" : err.message}`);
+      } finally { clearTimeout(timer); }
+    }
   }
-  throw lastErr;
+  if (cached) return { places: toPlaces(cached.raw), ts: cached.ts, stale: true };
+  throw new Error(errors.slice(-OVERPASS.length).join(" · "));
 }
 
 // Google Places (New) – Text Search med platsen som bias, ett anrop per ställe, cachas lokalt i 30 dagar.
@@ -409,7 +433,7 @@ function renderList() {
   }).join("") + (current.length > MAX ? `<li class="more">…och ${current.length - MAX} till. Filtrera eller minska radien.</li>` : "")
     + (!current.length ? '<li class="more">Inga ställen matchar filtren.</li>' : "");
   status(`${current.length} av ${places.length} ställen inom ${$("#radius").value.replace(".", ",")} km från ${address}`
-    + (geoFailed ? " (adressen hittades inte – dra 🏠 till rätt plats)" : ""));
+    + (geoFailed ? " (adressen hittades inte – dra 🏠 till rätt plats)" : "") + dataNote);
 }
 function focusPlace(p) {
   const m = markerFor(p);
@@ -477,12 +501,16 @@ $("#useGps").addEventListener("click", () => {
 async function load() {
   drawHome();
   map.setView(home, 14);
-  status("Hämtar restauranger inom 1 mil från OpenStreetMap… (kan ta 10–30 s)");
+  let res;
   try {
-    places = await fetchPlaces(home);
+    res = await fetchPlaces(home);
   } catch (e) {
-    return status("Kunde inte hämta restauranger: " + e.message + ". Prova att ladda om.");
+    $("#status").innerHTML = `<b class="closed">Kunde inte hämta restauranger.</b> ${esc(e.message)} <button id="retry">Försök igen</button>`;
+    $("#retry").onclick = load;
+    return;
   }
+  places = res.places;
+  dataNote = res.stale ? ` · sparad lista från ${new Date(res.ts).toLocaleDateString("sv-SE")} (servrarna svarar inte)` : "";
   markers.clear();
   const counts = {};
   places.forEach((p) => p.cuisines.forEach((c) => (counts[c] = (counts[c] || 0) + 1)));
