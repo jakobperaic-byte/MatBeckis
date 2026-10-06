@@ -1,0 +1,530 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MatBeckis</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.min.css">
+<style>
+  :root {
+    --bg: #f7f6f3; --panel: #ffffff; --text: #1d1d1f; --muted: #6b6b70; --line: #e4e2dd;
+    --accent: #c2410c; --accent-soft: #fde7da;
+    --good: #15803d; --ok: #ca8a04; --bad: #b91c1c; --none: #8a8a90;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141416; --panel: #1e1e21; --text: #ececee; --muted: #9a9aa0; --line: #2e2e33;
+      --accent: #fb923c; --accent-soft: #3a2416;
+      --good: #4ade80; --ok: #facc15; --bad: #f87171; --none: #77777d;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  #app { display: grid; grid-template-columns: 380px 1fr; height: 100%; }
+  #side { background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+  header { padding: 14px 16px 10px; border-bottom: 1px solid var(--line); }
+  h1 { margin: 0; font-size: 20px; }
+  h1 span { color: var(--accent); }
+  #status { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .controls { padding: 10px 16px; display: grid; gap: 8px; border-bottom: 1px solid var(--line); }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  input[type=search], select, input[type=text] {
+    flex: 1; min-width: 0; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px;
+    background: var(--bg); color: var(--text); font: inherit; }
+  button { padding: 7px 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg);
+    color: var(--text); font: inherit; cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button:disabled { opacity: .5; cursor: default; }
+  label.chip { display: inline-flex; gap: 4px; align-items: center; padding: 4px 9px; border: 1px solid var(--line);
+    border-radius: 999px; cursor: pointer; user-select: none; font-size: 13px; }
+  label.chip:has(input:checked) { background: var(--accent-soft); border-color: var(--accent); }
+  label.chip input { margin: 0; accent-color: var(--accent); }
+  .range { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); }
+  .range input { flex: 1; accent-color: var(--accent); }
+  #list { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; }
+  #list li { padding: 10px 16px; border-bottom: 1px solid var(--line); cursor: pointer; display: grid;
+    grid-template-columns: 1fr auto; gap: 2px 8px; }
+  #list li:hover { background: var(--bg); }
+  .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .meta { color: var(--muted); font-size: 12px; grid-column: 1 / -1; }
+  .badge { font-weight: 700; font-size: 13px; }
+  .open { color: var(--good); } .closed { color: var(--bad); }
+  .more { padding: 10px 16px; color: var(--muted); font-size: 12px; text-align: center; }
+  #map { height: 100%; }
+  .pin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.5); }
+  .dark-tiles { filter: invert(1) hue-rotate(180deg) brightness(.9) contrast(.9); }
+  .home { font-size: 26px; line-height: 26px; text-align: center; filter: drop-shadow(0 1px 2px rgba(0,0,0,.5)); }
+  .leaflet-popup-content { font-size: 13px; min-width: 200px; }
+  .leaflet-popup-content h3 { margin: 0 0 4px; font-size: 15px; }
+  .pop-actions { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+  .pop-actions button { padding: 4px 8px; font-size: 12px; }
+  .legend { background: var(--panel); color: var(--text); padding: 6px 9px; border-radius: 8px; font-size: 12px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.3); }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin: 0 4px 0 8px; }
+  dialog { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--text); max-width: 440px; }
+  dialog::backdrop { background: rgba(0,0,0,.4); }
+  #toggleList { display: none; }
+  @media (max-width: 760px) {
+    #app { grid-template-columns: 1fr; grid-template-rows: 1fr; }
+    #side { position: absolute; inset: auto 0 0 0; height: 55%; z-index: 1000; border-top: 1px solid var(--line);
+      border-radius: 14px 14px 0 0; transition: transform .2s; }
+    #side.collapsed { transform: translateY(calc(100% - 64px)); }
+    #toggleList { display: inline-block; }
+    #map { height: 100vh; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="side">
+    <header>
+      <div class="row" style="justify-content:space-between">
+        <h1>Mat<span>Beckis</span></h1>
+        <div class="row" style="flex:none;flex-wrap:nowrap">
+          <button id="toggleList" title="Visa/dölj lista">☰</button>
+          <button id="settingsBtn" title="Inställningar">⚙︎</button>
+        </div>
+      </div>
+      <div id="status">Startar…</div>
+    </header>
+    <div class="controls">
+      <div class="row">
+        <input id="q" type="search" placeholder="Sök namn eller kök (t.ex. sushi, pizza)…">
+      </div>
+      <div class="range">
+        <span>Radie</span>
+        <input id="radius" type="range" min="0.5" max="10" step="0.5" value="10">
+        <b id="radiusVal">10 km</b>
+      </div>
+      <div class="row">
+        <select id="sort">
+          <option value="dist">Sortera: närmast</option>
+          <option value="rating">Sortera: högst betyg</option>
+          <option value="score">Sortera: betyg × popularitet</option>
+          <option value="name">Sortera: namn</option>
+        </select>
+        <select id="cuisine"><option value="">Alla kök</option></select>
+      </div>
+      <div class="row">
+        <label class="chip"><input type="checkbox" class="kind" value="restaurant" checked>🍽️ Restaurang</label>
+        <label class="chip"><input type="checkbox" class="kind" value="fast_food" checked>🍔 Snabbmat</label>
+        <label class="chip"><input type="checkbox" class="kind" value="cafe" checked>☕ Kafé</label>
+      </div>
+      <div class="row">
+        <label class="chip"><input type="checkbox" id="openNow">Öppet nu</label>
+        <label class="chip"><input type="checkbox" id="lunch">Lunchläge (vardag 11–14)</label>
+        <label class="chip"><input type="checkbox" id="veg">🌱 Vegetariskt</label>
+        <label class="chip"><input type="checkbox" id="favOnly">❤️ Favoriter</label>
+        <select id="minRating" style="flex:0 0 auto">
+          <option value="0">Alla betyg</option>
+          <option value="3.5">⭐ 3,5+</option>
+          <option value="4">⭐ 4,0+</option>
+          <option value="4.5">⭐ 4,5+</option>
+        </select>
+      </div>
+      <div class="row">
+        <button class="primary" id="random">🎲 Slumpa lunch</button>
+        <button id="fetchRatings" title="Hämtar Google-betyg för de 20 översta i listan">⭐ Hämta betyg (topp 20)</button>
+      </div>
+    </div>
+    <ul id="list"></ul>
+  </aside>
+  <div id="map"></div>
+</div>
+
+<dialog id="settings">
+  <form method="dialog">
+    <h3 style="margin-top:0">Inställningar</h3>
+    <p style="color:var(--muted);font-size:13px">
+      Restaurangerna hämtas gratis från OpenStreetMap. För <b>betyg</b> behövs en egen
+      Google Places API-nyckel (Places API (New) aktiverad). Nyckeln sparas bara i din webbläsare.
+    </p>
+    <label>Google API-nyckel<br><input id="apiKey" type="text" placeholder="AIza…" style="width:100%;margin-top:4px"></label>
+    <p style="margin:12px 0 4px">Startadress</p>
+    <input id="addr" type="text" style="width:100%">
+    <div class="pop-actions">
+      <button value="save" class="primary">Spara</button>
+      <button value="cancel" formnovalidate>Avbryt</button>
+      <button type="button" id="useGps">📍 Använd min position</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/opening_hours@3.15.0/build/opening_hours.js"></script>
+<script>
+"use strict";
+const DEFAULT_ADDRESS = "Kopparbacken 22, Spånga";
+// Kopparbacken 20–22 (hitta.se). Hårdkodat eftersom Nominatim blockerar sidor som öppnas som lokal fil.
+const FALLBACK_CENTER = [59.36575, 17.89463];
+const MAX_RADIUS_M = 10000;                 // 1 mil
+const KINDS = { restaurant: "Restaurang", fast_food: "Snabbmat", cafe: "Kafé" };
+const OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.private.coffee/api/interpreter", "https://overpass.kumi.systems/api/interpreter"];
+
+// ---------- lagring (kan vara blockerad, t.ex. i privat läge) ----------
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("mb:" + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem("mb:" + k, JSON.stringify(v)); } catch {} },
+};
+let favorites = new Set(store.get("favorites", []));
+let ratings = store.get("ratings", {});           // osmId -> {rating, count, url, price, ts}
+let apiKey = store.get("apiKey", "");
+let address = store.get("address", DEFAULT_ADDRESS);
+
+// ---------- hjälpfunktioner ----------
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const status = (t) => ($("#status").textContent = t);
+function haversine(a, b) {
+  const R = 6371000, r = Math.PI / 180;
+  const dLat = (b[0] - a[0]) * r, dLon = (b[1] - a[1]) * r;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a[0] * r) * Math.cos(b[0] * r) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+const fmtDist = (m) => (m < 1000 ? Math.round(m / 10) * 10 + " m" : (m / 1000).toFixed(1).replace(".", ",") + " km");
+// Uppskattning: verklig väg ≈ 1,3 × fågelvägen. Gång 5 km/h, cykel 15 km/h.
+function travel(m) {
+  const walk = Math.round((m * 1.3) / 1000 / 5 * 60), bike = Math.round((m * 1.3) / 1000 / 15 * 60);
+  return walk <= 25 ? `🚶 ${walk} min` : `🚲 ${Math.max(1, bike)} min`;
+}
+const fmtRating = (r) => r.toFixed(1).replace(".", ",");
+const prettyCuisine = (c) => c.replace(/_/g, " ").replace(/^./, (x) => x.toUpperCase());
+function ratingColor(p) {
+  const r = ratings[p.id];
+  if (!r || r.rating == null) return "var(--none)";
+  return r.rating >= 4.3 ? "var(--good)" : r.rating >= 3.8 ? "var(--ok)" : "var(--bad)";
+}
+
+// ---------- öppettider (OSM-format) ----------
+function ohOf(p) {
+  if (p._oh !== undefined) return p._oh;
+  p._oh = null;
+  if (p.tags.opening_hours && typeof opening_hours === "function") {
+    try { p._oh = new opening_hours(p.tags.opening_hours, null, { mode: 0, tag_key: "opening_hours" }); } catch {}
+  }
+  return p._oh;
+}
+function isOpenAt(p, date) { const oh = ohOf(p); if (!oh) return null; try { return oh.getState(date); } catch { return null; } }
+function openForLunch(p) {
+  // Öppet någon gång 11:30–13:30 på närmaste vardag.
+  const d = new Date(); while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
+  for (const [h, m] of [[11, 30], [12, 30], [13, 30]]) {
+    const t = new Date(d); t.setHours(h, m, 0, 0);
+    if (isOpenAt(p, t)) return true;
+  }
+  return isOpenAt(p, d) === null ? null : false;
+}
+
+// ---------- karta ----------
+const map = L.map("map", { zoomControl: true }).setView(FALLBACK_CENTER, 13);
+const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+// Esri-kartor kräver varken nyckel eller Referer, så de fungerar även när index.html öppnas som lokal fil
+// (tile.openstreetmap.org och CARTO blockerar då).
+const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services/";
+const baseLayers = {
+  "Gatukarta": L.tileLayer(ESRI + "World_Street_Map/MapServer/tile/{z}/{y}/{x}", {
+    maxZoom: 19, className: dark ? "dark-tiles" : "", attribution: "Karta © Esri, HERE, Garmin, © OpenStreetMap" }),
+  "Satellit": L.tileLayer(ESRI + "World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+    maxZoom: 19, attribution: "Bild © Esri, Maxar, Earthstar Geographics" }),
+  "Terräng": L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
+    maxZoom: 17, attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, © <a href="https://opentopomap.org">OpenTopoMap</a>' }),
+};
+(baseLayers[store.get("baseLayer", "Gatukarta")] || baseLayers["Gatukarta"]).addTo(map);
+L.control.layers(baseLayers, null, { position: "topleft" }).addTo(map);
+map.on("baselayerchange", (e) => store.set("baseLayer", e.name));
+const cluster = L.markerClusterGroup({ maxClusterRadius: 45, disableClusteringAtZoom: 16 }).addTo(map);
+const ringLayer = L.layerGroup().addTo(map);
+let home = FALLBACK_CENTER, homeMarker = null, geoFailed = false, dataNote = "";
+let places = [], markers = new Map();
+
+const legend = L.control({ position: "topright" });
+legend.onAdd = () => {
+  const d = L.DomUtil.create("div", "legend");
+  d.innerHTML = '<i style="background:var(--good)"></i>4,3+<i style="background:var(--ok)"></i>3,8–4,2<i style="background:var(--bad)"></i>&lt;3,8<i style="background:var(--none)"></i>inget betyg';
+  return d;
+};
+legend.addTo(map);
+
+function drawHome() {
+  if (homeMarker) homeMarker.remove();
+  homeMarker = L.marker(home, { icon: L.divIcon({ className: "home", html: "🏠", iconSize: [26, 26] }), zIndexOffset: 1000, draggable: true })
+    .addTo(map).bindTooltip(esc(address));
+  homeMarker.on("dragend", () => { geoFailed = false; home = [homeMarker.getLatLng().lat, homeMarker.getLatLng().lng]; address = "Egen position"; load(); });
+  ringLayer.clearLayers();
+  for (const km of [1, 3, 5, 10]) {
+    L.circle(home, { radius: km * 1000, color: "#c2410c", weight: 1, opacity: .5, fill: false, dashArray: "4 6", interactive: false }).addTo(ringLayer);
+  }
+}
+
+// ---------- data ----------
+async function geocode(q) {
+  if (q === DEFAULT_ADDRESS) return FALLBACK_CENTER;
+  const cacheKey = "geo:" + q.toLowerCase();
+  const cached = store.get(cacheKey);
+  if (cached) return cached;
+  const url = "https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=se&q=" + encodeURIComponent(q);
+  const res = await fetch(url, { headers: { "Accept-Language": "sv" } });
+  const j = await res.json();
+  if (!j.length) throw new Error("Hittade inte adressen");
+  const c = [+j[0].lat, +j[0].lon];
+  store.set(cacheKey, c);
+  return c;
+}
+
+const KEEP_TAGS = ["opening_hours", "diet:vegetarian", "diet:vegan", "website", "contact:website", "addr:street", "addr:housenumber"];
+const PLACES_TTL = 7 * 864e5;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Hämtar från Overpass (flera servrar, två varv, 45 s timeout per försök). Resultatet sparas i webbläsaren
+// i 7 dagar; om alla servrar fallerar används senast sparade lista oavsett ålder.
+async function fetchPlaces(center) {
+  const cacheKey = "places:" + center.map((x) => x.toFixed(3)).join(",");
+  const cached = store.get(cacheKey);
+  const toPlaces = (raw) => raw.map((p) => ({ ...p, dist: haversine(center, [p.lat, p.lon]) })).filter((p) => p.dist <= MAX_RADIUS_M);
+  if (cached && Date.now() - cached.ts < PLACES_TTL) return { places: toPlaces(cached.raw), ts: cached.ts };
+
+  // En rektangel är mycket billigare för Overpass än around:10000 – cirkeln filtreras fram här i stället.
+  const dLat = MAX_RADIUS_M / 111320, dLon = dLat / Math.cos(center[0] * Math.PI / 180);
+  const bbox = [center[0] - dLat, center[1] - dLon, center[0] + dLat, center[1] + dLon].map((x) => x.toFixed(5)).join(",");
+  const q = `[out:json][timeout:60][bbox:${bbox}];
+    nwr["amenity"~"^(restaurant|fast_food|cafe)$"]["name"];
+    out center tags;`;
+  const errors = [];
+  for (let round = 0; round < 2; round++) {
+    if (round) { status("Servrarna svarar inte – försöker igen…"); await sleep(4000); }
+    for (const ep of OVERPASS) {
+      const host = new URL(ep).host;
+      status(`Hämtar restauranger inom 1 mil från ${host}… (kan ta 10–30 s)`);
+      const ctrl = new AbortController(), timer = setTimeout(() => ctrl.abort(), 45000);
+      try {
+        const res = await fetch(ep, { method: "POST", body: new URLSearchParams({ data: q }), signal: ctrl.signal });
+        if (!res.ok) throw new Error(res.status === 429 ? "för många anrop (429)" : "HTTP " + res.status);
+        const j = await res.json();
+        // Overpass svarar 200 med tom lista + "remark" vid timeout/överbelastning – prova nästa server då.
+        if (!j.elements?.length) throw new Error(j.remark || "tomt svar");
+        const raw = j.elements.map((e) => {
+          const tags = {};
+          for (const k of KEEP_TAGS) if (e.tags[k]) tags[k] = e.tags[k];
+          return { id: e.type[0] + e.id, lat: e.lat ?? e.center?.lat, lon: e.lon ?? e.center?.lon, tags,
+            kind: e.tags.amenity, name: e.tags.name,
+            cuisines: (e.tags.cuisine || "").split(";").map((s) => s.trim().toLowerCase()).filter(Boolean) };
+        }).filter((p) => p.lat != null);
+        const ts = Date.now();
+        store.set(cacheKey, { ts, raw });
+        return { places: toPlaces(raw), ts };
+      } catch (err) {
+        errors.push(`${host}: ${err.name === "AbortError" ? "svarade inte inom 45 s" : err.message}`);
+      } finally { clearTimeout(timer); }
+    }
+  }
+  if (cached) return { places: toPlaces(cached.raw), ts: cached.ts, stale: true };
+  throw new Error(errors.slice(-OVERPASS.length).join(" · "));
+}
+
+// Google Places (New) – Text Search med platsen som bias, ett anrop per ställe, cachas lokalt i 30 dagar.
+async function fetchRating(p) {
+  if (!apiKey) return null;
+  const c = ratings[p.id];
+  if (c && Date.now() - c.ts < 30 * 864e5) return c;
+  const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Goog-Api-Key": apiKey,
+      "X-Goog-FieldMask": "places.displayName,places.rating,places.userRatingCount,places.googleMapsUri,places.priceLevel" },
+    body: JSON.stringify({ textQuery: p.name, maxResultCount: 1, languageCode: "sv",
+      locationBias: { circle: { center: { latitude: p.lat, longitude: p.lon }, radius: 150 } } }),
+  });
+  if (!res.ok) throw new Error("Google svarade " + res.status);
+  const g = (await res.json()).places?.[0];
+  const r = { rating: g?.rating ?? null, count: g?.userRatingCount ?? 0, url: g?.googleMapsUri ?? null, price: g?.priceLevel ?? null, ts: Date.now() };
+  ratings[p.id] = r; store.set("ratings", ratings);
+  return r;
+}
+
+// ---------- filtrering & rendering ----------
+function filtered() {
+  const q = $("#q").value.trim().toLowerCase();
+  const radius = +$("#radius").value * 1000;
+  const kinds = new Set([...document.querySelectorAll(".kind:checked")].map((x) => x.value));
+  const cuisine = $("#cuisine").value, minR = +$("#minRating").value;
+  const openNow = $("#openNow").checked, lunch = $("#lunch").checked, veg = $("#veg").checked, fav = $("#favOnly").checked;
+  const now = new Date();
+  return places.filter((p) => {
+    if (p.dist > radius || !kinds.has(p.kind)) return false;
+    if (q && !p.name.toLowerCase().includes(q) && !p.cuisines.some((c) => c.includes(q))) return false;
+    if (cuisine && !p.cuisines.includes(cuisine)) return false;
+    if (veg && !/^(yes|only)$/.test(p.tags["diet:vegetarian"] || p.tags["diet:vegan"] || "")) return false;
+    if (fav && !favorites.has(p.id)) return false;
+    if (minR && !((ratings[p.id]?.rating ?? 0) >= minR)) return false;
+    if (openNow && isOpenAt(p, now) !== true) return false;
+    if (lunch && openForLunch(p) !== true) return false;
+    return true;
+  });
+}
+function score(p) { const r = ratings[p.id]; return r?.rating ? r.rating * Math.log10(10 + r.count) : 0; }
+function sorted(list) {
+  const s = $("#sort").value;
+  const cmp = { dist: (a, b) => a.dist - b.dist, name: (a, b) => a.name.localeCompare(b.name, "sv"),
+    rating: (a, b) => (ratings[b.id]?.rating ?? 0) - (ratings[a.id]?.rating ?? 0) || a.dist - b.dist,
+    score: (a, b) => score(b) - score(a) || a.dist - b.dist }[s];
+  return list.sort(cmp);
+}
+
+function popupHtml(p) {
+  const r = ratings[p.id], open = isOpenAt(p, new Date());
+  const t = p.tags;
+  const site = t.website || t["contact:website"];
+  const gmaps = r?.url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.name + " " + (t["addr:street"] || ""))}&query_place_id=`;
+  return `<h3>${favorites.has(p.id) ? "❤️ " : ""}${esc(p.name)}</h3>
+    <div>${r?.rating != null ? `⭐ <b>${fmtRating(r.rating)}</b> (${r.count} recensioner)${r.price ? " · " + "kr".repeat({ PRICE_LEVEL_INEXPENSIVE: 1, PRICE_LEVEL_MODERATE: 2, PRICE_LEVEL_EXPENSIVE: 3, PRICE_LEVEL_VERY_EXPENSIVE: 4 }[r.price] || 0) : ""}`
+      : apiKey ? "⭐ hämtar betyg…" : '<span style="color:var(--muted)">Inget betyg (lägg till Google-nyckel under ⚙︎)</span>'}</div>
+    <div>${KINDS[p.kind]}${p.cuisines.length ? " · " + esc(p.cuisines.map(prettyCuisine).join(", ")) : ""}</div>
+    <div>📍 ${fmtDist(p.dist)} · ${travel(p.dist)}</div>
+    ${t["addr:street"] ? `<div>${esc(t["addr:street"])} ${esc(t["addr:housenumber"] || "")}</div>` : ""}
+    <div>${open === true ? '<b class="open">Öppet nu</b>' : open === false ? '<b class="closed">Stängt nu</b>' : ""}
+      ${t.opening_hours ? `<span style="color:var(--muted)"> ${esc(t.opening_hours)}</span>` : ""}</div>
+    ${/^(yes|only)$/.test(t["diet:vegetarian"] || t["diet:vegan"] || "") ? "<div>🌱 Vegetariska alternativ</div>" : ""}
+    <div class="pop-actions">
+      <button data-fav="${p.id}">${favorites.has(p.id) ? "💔 Ta bort favorit" : "❤️ Favorit"}</button>
+      <a href="${esc(gmaps)}" target="_blank" rel="noopener"><button>Google Maps</button></a>
+      <a href="https://www.google.com/maps/dir/?api=1&origin=${home[0]},${home[1]}&destination=${p.lat},${p.lon}&travelmode=${p.dist < 2000 ? "walking" : "bicycling"}" target="_blank" rel="noopener"><button>Vägbeskrivning</button></a>
+      ${site ? `<a href="${esc(site)}" target="_blank" rel="noopener"><button>Hemsida/meny</button></a>` : ""}
+    </div>`;
+}
+
+function markerFor(p) {
+  let m = markers.get(p.id);
+  const icon = L.divIcon({ className: "", html: `<div class="pin" style="background:${ratingColor(p)}"></div>`, iconSize: [16, 16] });
+  if (!m) {
+    m = L.marker([p.lat, p.lon], { icon, title: p.name });
+    m.bindPopup(() => popupHtml(p));
+    m.on("popupopen", async () => {
+      if (apiKey && !ratings[p.id]) {
+        try { await fetchRating(p); m.setPopupContent(popupHtml(p)); refreshMarker(p); renderList(); }
+        catch (e) { status("Kunde inte hämta betyg: " + e.message); }
+      }
+    });
+    markers.set(p.id, m);
+  } else m.setIcon(icon);
+  return m;
+}
+const refreshMarker = (p) => markers.get(p.id)?.setIcon(L.divIcon({ className: "", html: `<div class="pin" style="background:${ratingColor(p)}"></div>`, iconSize: [16, 16] }));
+
+let current = [];
+function render() {
+  current = sorted(filtered());
+  cluster.clearLayers();
+  cluster.addLayers(current.map(markerFor));
+  renderList();
+}
+function renderList() {
+  const MAX = 300;
+  const ul = $("#list");
+  ul.innerHTML = current.slice(0, MAX).map((p) => {
+    const r = ratings[p.id], open = isOpenAt(p, new Date());
+    return `<li data-id="${p.id}">
+      <span class="name">${favorites.has(p.id) ? "❤️ " : ""}${esc(p.name)}</span>
+      <span class="badge" style="color:${ratingColor(p)}">${r?.rating != null ? "⭐ " + fmtRating(r.rating) : ""}</span>
+      <span class="meta">${fmtDist(p.dist)} · ${travel(p.dist)} · ${KINDS[p.kind]}${p.cuisines.length ? " · " + esc(p.cuisines.slice(0, 2).map(prettyCuisine).join(", ")) : ""}
+        ${open === true ? ' · <span class="open">öppet</span>' : open === false ? ' · <span class="closed">stängt</span>' : ""}</span></li>`;
+  }).join("") + (current.length > MAX ? `<li class="more">…och ${current.length - MAX} till. Filtrera eller minska radien.</li>` : "")
+    + (!current.length ? '<li class="more">Inga ställen matchar filtren.</li>' : "");
+  status(`${current.length} av ${places.length} ställen inom ${$("#radius").value.replace(".", ",")} km från ${address}`
+    + (geoFailed ? " (adressen hittades inte – dra 🏠 till rätt plats)" : "") + dataNote);
+}
+function focusPlace(p) {
+  const m = markerFor(p);
+  cluster.zoomToShowLayer(m, () => m.openPopup());
+  if (innerWidth <= 760) $("#side").classList.add("collapsed");
+}
+
+// ---------- händelser ----------
+$("#list").addEventListener("click", (e) => {
+  const li = e.target.closest("li[data-id]"); if (!li) return;
+  const p = places.find((x) => x.id === li.dataset.id); if (p) focusPlace(p);
+});
+document.addEventListener("click", (e) => {
+  const id = e.target.dataset?.fav; if (!id) return;
+  favorites.has(id) ? favorites.delete(id) : favorites.add(id);
+  store.set("favorites", [...favorites]);
+  const p = places.find((x) => x.id === id);
+  markers.get(id)?.setPopupContent(popupHtml(p));
+  renderList();
+});
+for (const el of ["#q", "#sort", "#cuisine", "#minRating", "#openNow", "#lunch", "#veg", "#favOnly"]) $(el).addEventListener("input", render);
+document.querySelectorAll(".kind").forEach((el) => el.addEventListener("input", render));
+$("#radius").addEventListener("input", () => { $("#radiusVal").textContent = $("#radius").value.replace(".", ",") + " km"; render(); });
+$("#toggleList").addEventListener("click", () => $("#side").classList.toggle("collapsed"));
+
+$("#random").addEventListener("click", () => {
+  // Föredra öppna ställen med bra betyg (eller okänt betyg) – närmare ställen väger tyngre.
+  const now = new Date();
+  let pool = current.filter((p) => isOpenAt(p, now) !== false && (ratings[p.id]?.rating ?? 4) >= 3.8);
+  if (!pool.length) pool = current;
+  if (!pool.length) return status("Inget att slumpa bland – lätta på filtren.");
+  const w = pool.map((p) => 1 / (1 + p.dist / 1000));
+  let x = Math.random() * w.reduce((a, b) => a + b, 0), i = 0;
+  while ((x -= w[i]) > 0) i++;
+  focusPlace(pool[Math.min(i, pool.length - 1)]);
+});
+
+$("#fetchRatings").addEventListener("click", async () => {
+  if (!apiKey) return openSettings();
+  const btn = $("#fetchRatings"); btn.disabled = true;
+  const top = current.slice(0, 20);
+  let n = 0;
+  for (const p of top) {
+    try { await fetchRating(p); refreshMarker(p); status(`Hämtar betyg… ${++n}/${top.length}`); }
+    catch (e) { status("Fel från Google: " + e.message); break; }
+  }
+  btn.disabled = false; render();
+});
+
+function openSettings() { $("#apiKey").value = apiKey; $("#addr").value = address; $("#settings").showModal(); }
+$("#settingsBtn").addEventListener("click", openSettings);
+$("#settings").addEventListener("close", () => {
+  if ($("#settings").returnValue !== "save") return;
+  apiKey = $("#apiKey").value.trim(); store.set("apiKey", apiKey);
+  const a = $("#addr").value.trim() || DEFAULT_ADDRESS;
+  if (a !== address) { address = a; store.set("address", address); start(); } else render();
+});
+$("#useGps").addEventListener("click", () => {
+  navigator.geolocation?.getCurrentPosition((pos) => {
+    $("#settings").close(); home = [pos.coords.latitude, pos.coords.longitude]; address = "din position"; geoFailed = false; load();
+  }, () => status("Kunde inte läsa din position."));
+});
+
+// ---------- start ----------
+async function load() {
+  drawHome();
+  map.setView(home, 14);
+  let res;
+  try {
+    res = await fetchPlaces(home);
+  } catch (e) {
+    $("#status").innerHTML = `<b class="closed">Kunde inte hämta restauranger.</b> ${esc(e.message)} <button id="retry">Försök igen</button>`;
+    $("#retry").onclick = load;
+    return;
+  }
+  places = res.places;
+  dataNote = res.stale ? ` · sparad lista från ${new Date(res.ts).toLocaleDateString("sv-SE")} (servrarna svarar inte)` : "";
+  markers.clear();
+  const counts = {};
+  places.forEach((p) => p.cuisines.forEach((c) => (counts[c] = (counts[c] || 0) + 1)));
+  $("#cuisine").innerHTML = '<option value="">Alla kök</option>' + Object.entries(counts).sort((a, b) => b[1] - a[1])
+    .map(([c, n]) => `<option value="${esc(c)}">${esc(prettyCuisine(c))} (${n})</option>`).join("");
+  render();
+}
+async function start() {
+  status("Letar upp " + address + "…");
+  try { home = await geocode(address); geoFailed = false; }
+  catch { home = FALLBACK_CENTER; geoFailed = true; }
+  load();
+}
+start();
+</script>
+</body>
+</html>
