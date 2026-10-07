@@ -1,0 +1,950 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lönsamhetspotential verkstad</title>
+<meta name="description" content="Räkna fram hur mycket olika åtgärder kan förbättra verkstadens resultat.">
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f4f3ef;
+  --surface: #fcfcfb;
+  --surface-2: #efeee9;
+  --border: #dcdad3;
+  --text: #0b0b0b;
+  --text-2: #52514e;
+  --muted: #77756f;
+  --accent: #2a78d6;
+  --accent-soft: #e3eefb;
+  --input-bg: #fff8db;
+  --input-border: #e6c84f;
+  --pos: #1a7f4b;
+  --neg: #c23b3a;
+  --bar-pos: #2a78d6;
+  --bar-neg: #e34948;
+  --warn-bg: #fff3d6;
+  --warn-border: #eda100;
+  --err: #c23b3a;
+  --shadow: 0 1px 2px rgba(0,0,0,.05), 0 2px 8px rgba(0,0,0,.04);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #121211;
+    --surface: #1a1a19;
+    --surface-2: #232321;
+    --border: #34332f;
+    --text: #ffffff;
+    --text-2: #c3c2b7;
+    --muted: #9a998f;
+    --accent: #3987e5;
+    --accent-soft: #1d2b3d;
+    --input-bg: #2e2914;
+    --input-border: #8a7424;
+    --pos: #4cc489;
+    --neg: #f07a79;
+    --bar-pos: #3987e5;
+    --bar-neg: #e66767;
+    --warn-bg: #33290f;
+    --warn-border: #c98500;
+    --err: #f07a79;
+    --shadow: none;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #121211;
+  --surface: #1a1a19;
+  --surface-2: #232321;
+  --border: #34332f;
+  --text: #ffffff;
+  --text-2: #c3c2b7;
+  --muted: #9a998f;
+  --accent: #3987e5;
+  --accent-soft: #1d2b3d;
+  --input-bg: #2e2914;
+  --input-border: #8a7424;
+  --pos: #4cc489;
+  --neg: #f07a79;
+  --bar-pos: #3987e5;
+  --bar-neg: #e66767;
+  --warn-bg: #33290f;
+  --warn-border: #c98500;
+  --err: #f07a79;
+  --shadow: none;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
+
+header.top {
+  position: sticky; top: 0; z-index: 10;
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+}
+header.top .wrap { display: flex; align-items: center; gap: 12px; padding-top: 10px; padding-bottom: 10px; flex-wrap: wrap; }
+header.top h1 { font-size: 17px; margin: 0; flex: 1 1 auto; }
+.summary-pill {
+  display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap;
+  font-size: 13px; color: var(--text-2);
+}
+.summary-pill b { color: var(--text); font-size: 15px; font-variant-numeric: tabular-nums; }
+.summary-pill .up { color: var(--pos); }
+
+nav.steps { display: flex; gap: 6px; flex-wrap: wrap; margin: 20px 0 8px; }
+nav.steps a {
+  text-decoration: none; color: var(--text-2); font-size: 13px;
+  padding: 6px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface);
+}
+nav.steps a:hover { color: var(--text); border-color: var(--accent); }
+
+.intro { color: var(--text-2); max-width: 70ch; margin: 8px 0 20px; }
+
+section.card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: var(--shadow); padding: 20px; margin: 0 0 20px;
+  scroll-margin-top: 80px;
+}
+section.card > h2 { margin: 0 0 4px; font-size: 19px; display: flex; align-items: center; gap: 10px; }
+.stepnum {
+  display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--accent); color: #fff; font-size: 13px; font-weight: 700; flex: none;
+}
+.lead { color: var(--text-2); margin: 0 0 16px; }
+h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 18px 0 8px; }
+
+.legend-cells { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--text-2); margin-bottom: 12px; }
+.swatch { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: -2px; margin-right: 6px; border: 1px solid var(--border); }
+.swatch.in { background: var(--input-bg); border-color: var(--input-border); }
+.swatch.calc { background: var(--surface-2); }
+
+/* Grid of inputs */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px 16px; }
+.field label { display: block; font-size: 13px; color: var(--text-2); margin-bottom: 4px; }
+.inputbox { position: relative; display: flex; align-items: center; }
+.inputbox input {
+  width: 100%; font: inherit; font-variant-numeric: tabular-nums;
+  padding: 9px 44px 9px 10px; border-radius: 8px;
+  background: var(--input-bg); border: 1px solid var(--input-border); color: var(--text);
+}
+.inputbox input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.inputbox .unit { position: absolute; right: 10px; color: var(--muted); font-size: 13px; pointer-events: none; }
+.field.invalid input { border-color: var(--err); }
+.field .hint { font-size: 12px; color: var(--muted); margin-top: 3px; }
+.field .error { font-size: 12px; color: var(--err); margin-top: 3px; }
+
+/* Measures */
+.measures { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+.measure {
+  border: 1px solid var(--border); border-radius: 10px; padding: 14px; background: var(--surface);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.measure.off { opacity: .75; }
+.measure-head { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+.measure h4 { margin: 0; font-size: 15px; }
+.measure .desc { font-size: 13px; color: var(--text-2); margin: 0; }
+.measure .today { font-size: 12px; color: var(--muted); }
+.impact { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 600; }
+.impact small { display: block; font-weight: 400; font-size: 11px; color: var(--muted); }
+.ctrl { display: grid; grid-template-columns: 1fr 140px; gap: 10px; align-items: center; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+.measure .error { font-size: 12px; color: var(--err); }
+
+.warn {
+  background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: 8px;
+  padding: 10px 12px; font-size: 14px; margin: 12px 0 0;
+}
+.warn[hidden] { display: none; }
+
+/* Hero results */
+.hero { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.tile { background: var(--surface-2); border-radius: 10px; padding: 14px; }
+.tile .k { font-size: 13px; color: var(--text-2); }
+.tile .v { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.2; margin-top: 4px; }
+.tile .s { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.tile.main { background: var(--accent-soft); }
+
+/* Tables */
+.tablewrap { overflow-x: auto; margin: 0 -4px; padding: 0 4px; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; font-size: 14px; }
+th, td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; white-space: normal; }
+thead th { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+tr.sub td:first-child { padding-left: 26px; color: var(--text-2); }
+tr.pct td { color: var(--text-2); font-size: 13px; }
+tr.strong td { font-weight: 700; }
+tr.total td { font-weight: 700; border-top: 2px solid var(--text-2); }
+td.pos { color: var(--pos); }
+td.neg { color: var(--neg); }
+td.calc { background: var(--surface-2); }
+
+/* Chart */
+.chart { margin-top: 4px; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart .lbl { fill: var(--text); font-size: 13px; }
+.chart .val { fill: var(--text-2); font-size: 12px; font-variant-numeric: tabular-nums; }
+.chart .axis { stroke: var(--text-2); stroke-width: 1; }
+.chart .grid { stroke: var(--border); stroke-width: 1; }
+.chart .hit { fill: transparent; cursor: default; }
+.chart .row:hover .barfill { opacity: .85; }
+.tooltip {
+  position: fixed; pointer-events: none; z-index: 30;
+  background: var(--surface); color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 10px; font-size: 13px; box-shadow: 0 4px 16px rgba(0,0,0,.15);
+  font-variant-numeric: tabular-nums; max-width: 260px;
+}
+.tooltip[hidden] { display: none; }
+
+.cols-2 { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 20px; }
+.cols-2 > * { min-width: 0; }
+@media (max-width: 860px) { .cols-2 { grid-template-columns: minmax(0,1fr); } }
+
+details { border: 1px solid var(--border); border-radius: 10px; padding: 0 14px; margin-top: 12px; background: var(--surface); }
+details > summary { cursor: pointer; padding: 12px 0; font-weight: 600; }
+details[open] > summary { border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+details ol { padding-left: 20px; color: var(--text-2); }
+details li { margin-bottom: 6px; }
+
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0 24px; }
+.kpi-grid dl { margin: 0 0 12px; }
+.kpi-grid dt { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin: 12px 0 4px; }
+.kpi-grid dd { margin: 0; display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; border-bottom: 1px dashed var(--border); font-size: 14px; }
+.kpi-grid dd span:first-child { color: var(--text-2); }
+.kpi-grid dd span:last-child { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.btn {
+  font: inherit; font-size: 13px; padding: 7px 12px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text);
+}
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+footer { color: var(--muted); font-size: 12px; padding: 12px 0 40px; }
+
+@media (max-width: 520px) {
+  .ctrl { grid-template-columns: 1fr; }
+  .measures { grid-template-columns: 1fr; }
+  section.card { padding: 16px; }
+  .tile .v { font-size: 22px; }
+  header.top h1 { font-size: 15px; }
+  header.top { position: static; }
+}
+@media print {
+  header.top { position: static; }
+  nav.steps, .actions, input[type=range] { display: none; }
+  section.card { break-inside: avoid; box-shadow: none; }
+  details { display: block; }
+  details > :not(summary) { display: block; }
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <h1>Lönsamhetspotential – verkstad</h1>
+    <div class="summary-pill" aria-live="polite">
+      <span>Vinst före skatt idag <b id="pill-now">–</b></span>
+      <span>Efter åtgärder <b id="pill-after">–</b></span>
+      <span class="up"><b id="pill-x" class="up">–</b></span>
+    </div>
+    <div class="actions">
+      <button class="btn" id="btn-theme" type="button" aria-label="Byt ljust/mörkt tema">Tema</button>
+      <button class="btn" id="btn-print" type="button">Skriv ut</button>
+      <button class="btn" id="btn-reset" type="button">Återställ exempel</button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <nav class="steps" aria-label="Steg">
+    <a href="#steg1">1. Nuläge</a>
+    <a href="#steg2">2. Mina åtgärder</a>
+    <a href="#steg3">3. Resultat</a>
+    <a href="#nyckeltal">Nyckeltal</a>
+    <a href="#antaganden">Antaganden</a>
+  </nav>
+
+  <p class="intro">
+    Fyll i verkstadens siffror för de senaste 12 månaderna (eller 6 månader – var bara konsekvent).
+    Testa sedan olika åtgärder och se direkt hur resultatet påverkas. Allt räknas ut automatiskt
+    och sparas i din webbläsare. Siffrorna som står ifyllda från början är exempeldata.
+  </p>
+
+  <!-- STEG 1 -->
+  <section class="card" id="steg1">
+    <h2><span class="stepnum">1</span>Nuläge – din resultaträkning och basfakta</h2>
+    <p class="lead">Fyll i det ni har tillgång till. Gula fält fyller du i själv, grå räknas ut automatiskt.</p>
+    <div class="legend-cells">
+      <span><span class="swatch in"></span>Fyll i själv</span>
+      <span><span class="swatch calc"></span>Räknas ut automatiskt</span>
+    </div>
+
+    <h3>Resultaträkning</h3>
+    <div class="grid" id="grid-rr"></div>
+
+    <h3>Basfakta verkstad</h3>
+    <div class="grid" id="grid-bas"></div>
+  </section>
+
+  <!-- STEG 2 -->
+  <section class="card" id="steg2">
+    <h2><span class="stepnum">2</span>Mina åtgärder</h2>
+    <p class="lead">
+      Dra i reglaget eller skriv ett värde. Plus = förbättring, minus = försämring.
+      Lämna 0 för åtgärder du inte vill räkna med. Alla värden gäller per år.
+    </p>
+    <div class="measures" id="measures"></div>
+    <p class="warn" id="overlap-warn" hidden>
+      <strong>OBS:</strong> Du har fyllt i både <em>Mer sålt per såld timme</em> och <em>Större arbetsorder</em>.
+      De överlappar, så merförsäljningen kan dubbelräknas. Använd en av dem.
+    </p>
+  </section>
+
+  <!-- STEG 3 -->
+  <section class="card" id="steg3">
+    <h2><span class="stepnum">3</span>Resultat</h2>
+    <p class="lead">Så här kan resultatet se ut om åtgärderna genomförs fullt ut under ett år.</p>
+
+    <div class="hero">
+      <div class="tile main">
+        <div class="k">Förbättring av resultatet per år</div>
+        <div class="v" id="t-impact">–</div>
+        <div class="s" id="t-impact-s"></div>
+      </div>
+      <div class="tile">
+        <div class="k">Vinst före skatt efter åtgärder</div>
+        <div class="v" id="t-after">–</div>
+        <div class="s" id="t-after-s"></div>
+      </div>
+      <div class="tile">
+        <div class="k">Förbättring (× nuläget)</div>
+        <div class="v" id="t-x">–</div>
+        <div class="s">Vinst före skatt efter / idag</div>
+      </div>
+      <div class="tile">
+        <div class="k">Täckningsgrad</div>
+        <div class="v" id="t-tg">–</div>
+        <div class="s" id="t-tg-s"></div>
+      </div>
+    </div>
+
+    <div class="cols-2">
+      <div>
+        <h3>Vilken åtgärd ger mest? (resultatpåverkan per år)</h3>
+        <div class="chart" id="chart" role="img" aria-label="Stapeldiagram över resultatpåverkan per åtgärd, sorterat från störst till minst"></div>
+      </div>
+      <div>
+        <h3>Min resultaträkning</h3>
+        <div class="tablewrap">
+          <table id="tbl-rr">
+            <thead><tr><th>Post</th><th>Idag</th><th>Förändring</th><th>Möjligt utfall</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <h3>Detaljer per åtgärd</h3>
+    <div class="tablewrap">
+      <table id="tbl-measures">
+        <thead><tr><th>Åtgärd</th><th>Status idag</th><th>Förändring</th><th>Påverkan omsättning</th><th>Påverkan kostnader</th><th>Påverkan resultat</th><th>Andel</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="lead" style="margin-top:10px;font-size:13px">
+      Påverkan kostnader: plus = högre kostnad, minus = lägre kostnad.
+      Åtgärderna räknas var för sig mot nuläget och summeras (samspel ingår ej).
+    </p>
+  </section>
+
+  <!-- NYCKELTAL -->
+  <section class="card" id="nyckeltal">
+    <h2>Nyckeltal idag</h2>
+    <p class="lead">Räknas ut automatiskt från dina siffror i steg 1.</p>
+    <div class="kpi-grid" id="kpis"></div>
+  </section>
+
+  <!-- ANTAGANDEN -->
+  <section class="card" id="antaganden">
+    <h2>Antaganden i beräkningarna</h2>
+    <p class="lead">Bra att känna till innan du drar slutsatser.</p>
+    <details>
+      <summary>Visa alla antaganden</summary>
+      <ol>
+        <li><b>Fler timmar:</b> extra timmar säljs till dagens snittintäkt per såld timme. Material följer med som idag (samma produktförsäljning per timme och samma marginal). Lönen ändras inte – timmarna är redan betalda.</li>
+        <li><b>Höjt pris:</b> gäller dagens fakturerade timmar. Ingen volymminskning och ingen extra kostnad.</li>
+        <li><b>Produktmarginal:</b> %-enheter × dagens produktförsäljning. Påverkar kostnaden, inte omsättningen.</li>
+        <li><b>Mer sålt per timme:</b> dagens fakturerade timmar × extra kr. Materialkostnad enligt dagens marginal.</li>
+        <li><b>Större arbetsorder:</b> extra kr × antal arbetsorder. Samma mix som idag, så produktdelen får material enligt dagens marginal. Arbetsdelen kostar inget extra.</li>
+        <li><b>Glömd fakturering:</b> arbetet är redan utfört och betalt, så hela beloppet blir resultat.</li>
+        <li><b>Fasta kostnader:</b> %-enheter × omsättningen idag = sänkning i kr. Gäller indirekta kostnader, inte avskrivningar.</li>
+        <li><b>Samspel:</b> åtgärderna räknas var för sig mot nuläget och summeras. Hänsyn tas inte till att de påverkar varandra (försiktig bedömning).</li>
+        <li><b>Överlapp:</b> "Mer sålt per timme" och "Större arbetsorder" beskriver delvis samma merförsäljning. Använd en av dem för att undvika dubbelräkning.</li>
+        <li><b>Skatt och övrigt:</b> samma skattesats på nytt resultat. Finansiella poster och avskrivningar är oförändrade.</li>
+        <li><b>Tid:</b> full helårseffekt, utan tidsfördröjning och utan kostnad för att genomföra åtgärderna.</li>
+      </ol>
+    </details>
+  </section>
+
+  <footer>
+    Dina siffror sparas bara lokalt i den här webbläsaren. Beräkningarna följer bladet "test 2" i
+    Räkneövning – Lönsamhet – Potential III.
+  </footer>
+</main>
+
+<div class="tooltip" id="tooltip" hidden></div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- Formatering ----------
+  const nf0 = new Intl.NumberFormat("sv-SE", { maximumFractionDigits: 0 });
+  const nf1 = new Intl.NumberFormat("sv-SE", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  const kr = v => !isFinite(v) ? "–" : (Math.round(v) === 0 ? "0 kr" : nf0.format(Math.round(v)) + " kr");
+  const krSigned = v => !isFinite(v) ? "–" : (Math.round(v) > 0 ? "+" : "") + kr(v);
+  const pct = v => !isFinite(v) ? "–" : nf1.format(v * 100) + " %";
+  const pctPts = v => !isFinite(v) ? "–" : (v > 0 ? "+" : "") + nf1.format(v * 100) + " %-enh.";
+  const pct0 = v => !isFinite(v) ? "–" : nf0.format(v * 100) + " %";
+  const hrs = v => !isFinite(v) ? "–" : nf0.format(Math.round(v)) + " h";
+  const times = v => !isFinite(v) ? "n/a" : nf1.format(v) + "×";
+
+  // Tolka svensk inmatning: "9 195 000", "1,5", "-50"
+  function parseNum(s) {
+    if (typeof s === "number") return s;
+    const clean = String(s).replace(/[\s  ]/g, "").replace(/kr|h|%/gi, "").replace(",", ".").replace(/[−–]/g, "-");
+    if (clean === "" || clean === "-") return 0;
+    const n = Number(clean);
+    return isFinite(n) ? n : NaN;
+  }
+
+  // ---------- Indata ----------
+  // Resultaträkning (B2, B4, B6, B8, B10, B16)
+  const RR_FIELDS = [
+    { id: "B2",  label: "Nettoomsättning", unit: "kr", def: 9195000 },
+    { id: "B4",  label: "Direkta kostnader (lön mekaniker samt produkter)", unit: "kr", def: 7150000 },
+    { id: "B6",  label: "Fasta/indirekta kostnader", unit: "kr", def: 1575000 },
+    { id: "B8",  label: "Avskrivningar", unit: "kr", def: 198000 },
+    { id: "B10", label: "Finansiella poster", unit: "kr", def: -36, hint: "Minus = kostnad" },
+    { id: "B16", label: "Bolagsskattesats", unit: "%", def: 0.206, pct: true }
+  ];
+  // Basfakta (B20–B27)
+  const BAS_FIELDS = [
+    { id: "B20", label: "Antal mekaniker", unit: "st", def: 4 },
+    { id: "B21", label: "Köpta, i verkstaden närvarande timmar", unit: "h", def: 7040 },
+    { id: "B22", label: "Fakturerade timmar", unit: "h", def: 4500 },
+    { id: "B23", label: "Fakturerade timmar totalt", unit: "kr", def: 4597500 },
+    { id: "B24", label: "Listpris per timme", unit: "kr", def: 1000 },
+    { id: "B25", label: "Lönekostnad mekaniker totalt", unit: "kr", def: 3575000 },
+    { id: "B26", label: "Inköpskostnad fakturerade produkter", unit: "kr", def: 3000000 },
+    { id: "B27", label: "Antal levererade arbetsorder", unit: "st", def: 3678 }
+  ];
+
+  // Åtgärder (F7–F13) med gränser från bladets datavalidering
+  const MEASURES = [
+    { id: "F7",  key: "timmar", name: "Fler fakturerade timmar", short: "Fler timmar", unit: "h", def: 500,
+      desc: "Sälj fler av de timmar som idag inte faktureras.",
+      today: m => `Idag: ${hrs(m.B22)} fakturerade, ${hrs(m.B35)} osålda (produktivitet ${pct(m.B33)})`,
+      min: m => -m.B22, max: m => m.B35, sliderMin: m => -Math.min(m.B22, 1000), sliderMax: m => m.B35, step: 10,
+      err: "Plus = fler sålda timmar (max osåld tid). Minus = färre sålda timmar (max dagens fakturerade)." },
+    { id: "F8",  key: "pris", name: "Höjt pris per såld timme", short: "Höjt pris", unit: "kr/h", def: 50,
+      desc: "Höj snittintäkten per fakturerad timme.",
+      today: m => `Idag: ${kr(m.B34)} per såld timme`,
+      min: m => -m.B34, max: () => Infinity, sliderMin: () => -200, sliderMax: () => 300, step: 5,
+      err: "Plus = höjt pris, minus = sänkt pris. Kan inte sänkas under 0 kr." },
+    { id: "F9",  key: "marginal", name: "Bättre produktmarginal", short: "Produktmarginal", unit: "%-enh.", def: 0.02, pct: true,
+      desc: "Förbättra snittmarginalen på sålda produkter.",
+      today: m => `Idag: ${pct(m.B41)} marginal på ${kr(m.B40)} produktförsäljning`,
+      min: m => -m.B41, max: m => 1 - m.B41, sliderMin: () => -0.10, sliderMax: () => 0.15, step: 0.005,
+      err: "Plus = bättre marginal, minus = sämre. Marginalen kan inte gå under 0 % eller över 100 %." },
+    { id: "F10", key: "mersalt", name: "Mer sålt per såld timme", short: "Mer sålt per timme", unit: "kr/h", def: 50,
+      desc: "Sälj mer produkter i samband med varje timme. Alternativ till \"Större arbetsorder\".",
+      today: m => `Idag: ${kr(m.B42)} produkter per såld timme`,
+      min: m => -m.B42, max: () => Infinity, sliderMin: () => -200, sliderMax: () => 300, step: 5,
+      err: "Plus = mer sålt, minus = mindre sålt. Kan inte bli under 0 kr per timme." },
+    { id: "F11", key: "order", name: "Större arbetsorder", short: "Större arbetsorder", unit: "kr/order", def: 0,
+      desc: "Öka snittstorleken per arbetsorder. Alternativ till \"Mer sålt per timme\".",
+      today: m => `Idag: ${kr(m.B46)} per arbetsorder`,
+      min: m => -m.B46, max: () => Infinity, sliderMin: () => -500, sliderMax: () => 1000, step: 10,
+      err: "Plus = större order, minus = mindre. Kan inte bli under 0 kr per order." },
+    { id: "F12", key: "glomd", name: "Glömd fakturering", short: "Glömd fakturering", unit: "kr/order", def: 50,
+      desc: "Få med allt som gjorts på ordern.",
+      today: m => `${nf0.format(m.B27)} arbetsorder per år`,
+      min: () => 0, max: () => Infinity, sliderMin: () => 0, sliderMax: () => 300, step: 5,
+      err: "Ange 0 eller mer. Kan inte bli sämre än idag." },
+    { id: "F13", key: "fasta", name: "Lägre fasta kostnader", short: "Lägre fasta kostnader", unit: "%-enh.", def: 0.01, pct: true,
+      desc: "Minska fasta/indirekta kostnader, i %-enheter av omsättningen.",
+      today: m => `Idag: fasta kostnader ${pct(m.B56)} av omsättningen`,
+      min: m => -(1 - m.B56), max: m => m.B56, sliderMin: () => -0.05, sliderMax: m => Math.min(0.08, m.B56), step: 0.0025,
+      err: "Plus = lägre fasta kostnader, minus = högre (%-enheter av omsättningen)." }
+  ];
+
+  const STORAGE_KEY = "lonsamhet-test2-v1";
+  const state = {};
+  function defaults() {
+    [...RR_FIELDS, ...BAS_FIELDS, ...MEASURES].forEach(f => { state[f.id] = f.def; });
+  }
+  defaults();
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+    if (saved && typeof saved === "object") {
+      Object.keys(state).forEach(k => { if (typeof saved[k] === "number" && isFinite(saved[k])) state[k] = saved[k]; });
+    }
+  } catch (e) { /* ingen lagring tillgänglig */ }
+  function save() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+  }
+
+  // ---------- Beräkning (samma formler som bladet "test 2") ----------
+  function compute(s) {
+    const m = Object.assign({}, s);
+    const div = (a, b) => b === 0 ? NaN : a / b;
+
+    // Nuläge
+    m.B3 = m.B4 + m.B6 + m.B8;
+    m.B5 = div(m.B2 - m.B4, m.B2);
+    m.B7 = div(m.B6, m.B2);
+    m.B9 = m.B2 - m.B3;
+    m.B11 = m.B9 + m.B10;
+    m.B12 = div(m.B11, m.B2);
+    m.B13 = m.B11 * m.B16;
+    m.B14 = m.B11 - m.B13;
+    m.B15 = div(m.B14, m.B2);
+
+    // KPI
+    m.B33 = div(m.B22, m.B21);
+    m.B34 = div(m.B23, m.B22);
+    m.B35 = m.B21 - m.B22;
+    m.B36 = div(m.B35, m.B21);
+    m.B37 = div(m.B25, m.B22);
+    m.B40 = m.B2 - m.B23;
+    m.B41 = div(m.B40 - m.B26, m.B40);
+    m.B42 = div(m.B40, m.B22);
+    m.B55 = m.B6 + m.B8;
+    m.B45 = div(m.B11, m.B27);
+    m.B46 = div(m.B2, m.B27);
+    m.B47 = div(m.B23, m.B27);
+    m.B48 = div(m.B40, m.B27);
+    m.B49 = div(m.B4 + m.B55, m.B27);
+    m.B50 = div(m.B25, m.B27);
+    m.B51 = div(m.B26, m.B27);
+    m.B52 = div(m.B55, m.B27);
+    m.B56 = div(m.B55, m.B2);
+    m.B57 = div(m.B55, m.B35);
+
+    // Validering: begränsa åtgärderna till tillåtet intervall (som Excel-valideringen)
+    m.errors = {};
+    MEASURES.forEach(ms => {
+      const lo = ms.min(m), hi = ms.max(m), v = s[ms.id];
+      if (isFinite(lo) && v < lo - 1e-9) { m.errors[ms.id] = ms.err; m[ms.id] = lo; }
+      else if (isFinite(hi) && v > hi + 1e-9) { m.errors[ms.id] = ms.err; m[ms.id] = hi; }
+      else m[ms.id] = v;
+    });
+
+    const n = x => isFinite(x) ? x : 0;
+    const rows = [];
+    // 1. Fler timmar
+    {
+      const g = m.F7, h23 = g * n(m.B34), h24 = g * n(m.B42), i24 = h24 * (1 - n(m.B41));
+      rows.push({ ms: MEASURES[0], status: hrs(m.B22), change: (g > 0 ? "+" : "") + hrs(g),
+        H: h23 + h24, I: i24,
+        extra: `Ny produktivitet: ${pct(div(m.B22 + g, m.B21))} (idag ${pct(m.B33)})` });
+    }
+    // 2. Höjt pris
+    rows.push({ ms: MEASURES[1], status: kr(m.B34), change: krSigned(m.F8), H: m.F8 * m.B22, I: 0 });
+    // 3. Produktmarginal
+    rows.push({ ms: MEASURES[2], status: pct(m.B41), change: pctPts(m.F9), H: 0, I: -m.F9 * n(m.B40) });
+    // 4. Mer sålt per timme
+    { const h = m.F10 * m.B22; rows.push({ ms: MEASURES[3], status: kr(m.B42), change: krSigned(m.F10), H: h, I: h * (1 - n(m.B41)) }); }
+    // 5. Större arbetsorder
+    { const h = m.F11 * m.B27; rows.push({ ms: MEASURES[4], status: kr(m.B46), change: krSigned(m.F11), H: h, I: h * n(div(m.B40, m.B2)) * (1 - n(m.B41)) }); }
+    // 6. Glömd fakturering
+    rows.push({ ms: MEASURES[5], status: "–", change: krSigned(m.F12), H: m.F12 * m.B27, I: 0 });
+    // 7. Fasta kostnader
+    rows.push({ ms: MEASURES[6], status: pct(m.B56), change: pctPts(m.F13), H: 0, I: -m.F13 * m.B2 });
+
+    rows.forEach(r => { r.J = r.H - r.I; });
+    m.rows = rows;
+    m.H42 = rows.reduce((a, r) => a + r.H, 0);
+    m.I42 = rows.reduce((a, r) => a + r.I, 0);
+    m.J42 = m.H42 - m.I42;
+    rows.forEach(r => { r.K = div(r.J, m.J42); });
+
+    // Möjligt utfall (kolumn D)
+    m.C2 = m.H42;
+    m.D2 = m.B2 + m.C2;
+    m.C4 = rows.slice(0, 6).reduce((a, r) => a + r.I, 0);
+    m.D4 = m.B4 + m.C4;
+    m.C6 = rows[6].I;
+    m.D6 = m.B6 + m.C6;
+    m.D8 = m.B8;
+    m.D3 = m.D4 + m.D6 + m.D8;
+    m.D5 = div(m.D2 - m.D4, m.D2);
+    m.D7 = div(m.D6, m.D2);
+    m.D9 = m.D2 - m.D3;
+    m.D10 = m.B10;
+    m.D11 = m.D9 + m.D10;
+    m.D12 = div(m.D11, m.D2);
+    m.D13 = m.D11 * m.B16;
+    m.D14 = m.D11 - m.D13;
+    m.D15 = div(m.D14, m.D2);
+    m.B17 = m.B11 > 0 ? m.D11 / m.B11 : NaN;
+    m.overlap = m.F10 > 0 && m.F11 > 0;
+    return m;
+  }
+
+  // ---------- Bygg formulär ----------
+  const $ = id => document.getElementById(id);
+
+  function toDisplay(f, v) {
+    if (f.pct) return nf1.format(v * 100);
+    return nf0.format(v);
+  }
+
+  function buildField(f, container) {
+    const wrap = document.createElement("div");
+    wrap.className = "field";
+    wrap.innerHTML = `
+      <label for="in-${f.id}">${f.label}</label>
+      <div class="inputbox">
+        <input id="in-${f.id}" inputmode="decimal" autocomplete="off">
+        <span class="unit">${f.unit}</span>
+      </div>
+      ${f.hint ? `<div class="hint">${f.hint}</div>` : ""}
+      <div class="error" hidden></div>`;
+    const input = wrap.querySelector("input");
+    const errEl = wrap.querySelector(".error");
+    input.value = toDisplay(f, state[f.id]);
+    input.addEventListener("input", () => {
+      const n = parseNum(input.value);
+      if (isNaN(n)) {
+        wrap.classList.add("invalid"); errEl.hidden = false; errEl.textContent = "Skriv ett tal, t.ex. 1 500 000";
+        return;
+      }
+      wrap.classList.remove("invalid"); errEl.hidden = true;
+      state[f.id] = f.pct ? n / 100 : n;
+      update();
+    });
+    input.addEventListener("blur", () => {
+      if (!wrap.classList.contains("invalid")) input.value = toDisplay(f, state[f.id]);
+    });
+    f.input = input;
+    container.appendChild(wrap);
+  }
+  RR_FIELDS.forEach(f => buildField(f, $("grid-rr")));
+  BAS_FIELDS.forEach(f => buildField(f, $("grid-bas")));
+
+  // Beräknade grå rutor i steg 1
+  const CALC_FIELDS = [
+    { label: "Kostnader totalt", get: m => kr(m.B3), grid: "grid-rr" },
+    { label: "Rörelseresultat", get: m => kr(m.B9), grid: "grid-rr" },
+    { label: "Vinst före skatt", get: m => kr(m.B11), grid: "grid-rr" },
+    { label: "Fakturerade produkter/övrigt (omsättning − timintäkt)", get: m => kr(m.B40), grid: "grid-bas" },
+    { label: "Snittmarginal fakturerade produkter", get: m => pct(m.B41), grid: "grid-bas" },
+    { label: "Produktivitet", get: m => pct(m.B33), grid: "grid-bas" }
+  ];
+  CALC_FIELDS.forEach(c => {
+    const el = document.createElement("div");
+    el.className = "field";
+    el.innerHTML = `<label>${c.label}</label><div class="inputbox"><input disabled style="background:var(--surface-2);border-color:var(--border);padding-right:10px"></div>`;
+    c.el = el.querySelector("input");
+    $(c.grid).appendChild(el);
+  });
+
+  // Åtgärdskort
+  MEASURES.forEach((ms, i) => {
+    const card = document.createElement("div");
+    card.className = "measure";
+    card.innerHTML = `
+      <div class="measure-head">
+        <div>
+          <h4>${i + 1}. ${ms.name}</h4>
+          <p class="desc">${ms.desc}</p>
+        </div>
+        <div class="impact"><span class="impact-v">–</span><small>resultat/år</small></div>
+      </div>
+      <div class="today"></div>
+      <div class="ctrl">
+        <input type="range" aria-label="${ms.name}">
+        <div class="inputbox"><input inputmode="decimal" autocomplete="off" aria-label="${ms.name} (${ms.unit})"><span class="unit">${ms.unit}</span></div>
+      </div>
+      <div class="extra today" hidden></div>
+      <div class="error" hidden></div>`;
+    ms.card = card;
+    ms.range = card.querySelector('input[type=range]');
+    ms.num = card.querySelector('.inputbox input');
+    ms.impactEl = card.querySelector(".impact-v");
+    ms.todayEl = card.querySelector(".today");
+    ms.extraEl = card.querySelector(".extra");
+    ms.errEl = card.querySelector(".error");
+
+    ms.range.addEventListener("input", () => {
+      state[ms.id] = Number(ms.range.value);
+      ms.num.value = toDisplay(ms, state[ms.id]);
+      update();
+    });
+    ms.num.addEventListener("input", () => {
+      const n = parseNum(ms.num.value);
+      if (isNaN(n)) return;
+      state[ms.id] = ms.pct ? n / 100 : n;
+      update({ keepNum: ms });
+    });
+    ms.num.addEventListener("blur", () => { ms.num.value = toDisplay(ms, state[ms.id]); });
+    ms.num.value = toDisplay(ms, state[ms.id]);
+    $("measures").appendChild(card);
+  });
+
+  // ---------- Rendering ----------
+  function update(opts) {
+    opts = opts || {};
+    const m = compute(state);
+    save();
+
+    // Topp-sammanfattning
+    $("pill-now").textContent = kr(m.B11);
+    $("pill-after").textContent = kr(m.D11);
+    $("pill-x").textContent = isFinite(m.B17) ? times(m.B17) : "";
+
+    CALC_FIELDS.forEach(c => { c.el.value = c.get(m); });
+
+    // Åtgärdskort
+    MEASURES.forEach((ms, i) => {
+      const r = m.rows[i];
+      ms.impactEl.textContent = krSigned(r.J);
+      ms.impactEl.style.color = r.J > 0.5 ? "var(--pos)" : r.J < -0.5 ? "var(--neg)" : "var(--muted)";
+      ms.todayEl.textContent = ms.today(m);
+      ms.card.classList.toggle("off", state[ms.id] === 0);
+      if (r.extra && state[ms.id] !== 0) { ms.extraEl.hidden = false; ms.extraEl.textContent = r.extra; }
+      else ms.extraEl.hidden = true;
+
+      const smin = ms.sliderMin(m), smax = ms.sliderMax(m);
+      const lo = isFinite(smin) ? Math.min(smin, state[ms.id]) : -100;
+      const hi = isFinite(smax) ? Math.max(smax, state[ms.id]) : 100;
+      ms.range.min = lo; ms.range.max = hi; ms.range.step = ms.step;
+      if (document.activeElement !== ms.range) ms.range.value = state[ms.id];
+      if (opts.keepNum !== ms && document.activeElement !== ms.num) ms.num.value = toDisplay(ms, state[ms.id]);
+
+      if (m.errors[ms.id]) {
+        const lim = m[ms.id];
+        ms.errEl.hidden = false;
+        ms.errEl.textContent = ms.err + " Räknar med " + (ms.pct ? pctPts(lim) : nf0.format(Math.round(lim)) + " " + ms.unit) + ".";
+      } else ms.errEl.hidden = true;
+    });
+    $("overlap-warn").hidden = !m.overlap;
+
+    // Hero
+    $("t-impact").textContent = krSigned(m.J42);
+    $("t-impact").style.color = m.J42 >= 0 ? "var(--pos)" : "var(--neg)";
+    $("t-impact-s").textContent = `Efter skatt: ${krSigned(m.D14 - m.B14)}`;
+    $("t-after").textContent = kr(m.D11);
+    $("t-after-s").textContent = `Idag ${kr(m.B11)} · marginal ${pct(m.D12)} (idag ${pct(m.B12)})`;
+    $("t-x").textContent = times(m.B17);
+    $("t-tg").textContent = pct(m.D5);
+    $("t-tg-s").textContent = `Idag ${pct(m.B5)}`;
+
+    renderRR(m);
+    renderMeasuresTable(m);
+    renderChart(m);
+    renderKpis(m);
+  }
+
+  function cls(v) { return Math.round(v) > 0 ? "pos" : Math.round(v) < 0 ? "neg" : ""; }
+  function clsPct(v) { return v > 0.00005 ? "pos" : v < -0.00005 ? "neg" : ""; }
+  // För kostnader är en ökning negativ
+  function clsCost(v) { return Math.round(v) > 0 ? "neg" : Math.round(v) < 0 ? "pos" : ""; }
+
+  function renderRR(m) {
+    const pctDiff = v => !isFinite(v) ? "–" : (v > 0 ? "+" : "") + nf1.format(v * 100) + " %-enh.";
+    const R = [
+      { t: "Nettoomsättning", b: m.B2, d: m.D2, cls: "strong" },
+      { t: "Kostnader totalt", b: m.B3, d: m.D3, cost: true },
+      { t: "Direkta kostnader", b: m.B4, d: m.D4, cls: "sub", cost: true },
+      { t: "Täckningsgrad", b: m.B5, d: m.D5, cls: "sub pct", p: true },
+      { t: "Fasta/indirekta kostnader", b: m.B6, d: m.D6, cls: "sub", cost: true },
+      { t: "Andel av omsättning", b: m.B7, d: m.D7, cls: "sub pct", p: true, costP: true },
+      { t: "Avskrivningar", b: m.B8, d: m.D8, cls: "sub", cost: true },
+      { t: "Rörelseresultat", b: m.B9, d: m.D9, cls: "strong" },
+      { t: "Finansiella poster", b: m.B10, d: m.D10 },
+      { t: "Vinst före skatt", b: m.B11, d: m.D11, cls: "total" },
+      { t: "Vinstmarginal före skatt", b: m.B12, d: m.D12, cls: "pct", p: true },
+      { t: `Bolagsskatt ${nf1.format(m.B16 * 100)} %`, b: m.B13, d: m.D13, cost: true },
+      { t: "Vinst efter skatt", b: m.B14, d: m.D14, cls: "strong" },
+      { t: "Vinstmarginal efter skatt", b: m.B15, d: m.D15, cls: "pct", p: true }
+    ];
+    $("tbl-rr").tBodies[0].innerHTML = R.map(r => {
+      const c = r.d - r.b;
+      const cc = r.p ? (r.costP ? (c > 0.00005 ? "neg" : c < -0.00005 ? "pos" : "") : clsPct(c)) : (r.cost ? clsCost(c) : cls(c));
+      return `<tr class="${r.cls || ""}"><td>${r.t}</td>
+        <td>${r.p ? pct(r.b) : kr(r.b)}</td>
+        <td class="${cc}">${r.p ? pctDiff(c) : krSigned(c)}</td>
+        <td>${r.p ? pct(r.d) : kr(r.d)}</td></tr>`;
+    }).join("");
+  }
+
+  function renderMeasuresTable(m) {
+    const body = m.rows.map((r, i) => `<tr>
+      <td>${i + 1}. ${r.ms.name}</td>
+      <td class="calc">${r.status}</td>
+      <td>${r.change}</td>
+      <td class="${cls(r.H)}">${krSigned(r.H)}</td>
+      <td class="${clsCost(r.I)}">${krSigned(r.I)}</td>
+      <td class="${cls(r.J)}"><b>${krSigned(r.J)}</b></td>
+      <td>${isFinite(r.K) ? pct0(r.K) : "–"}</td></tr>`).join("");
+    const total = `<tr class="total"><td>Total nettopåverkan per år</td><td></td><td></td>
+      <td class="${cls(m.H42)}">${krSigned(m.H42)}</td>
+      <td class="${clsCost(m.I42)}">${krSigned(m.I42)}</td>
+      <td class="${cls(m.J42)}">${krSigned(m.J42)}</td>
+      <td>${isFinite(m.J42) && m.J42 !== 0 ? "100 %" : "–"}</td></tr>`;
+    $("tbl-measures").tBodies[0].innerHTML = body + total;
+  }
+
+  // Horisontellt stapeldiagram, sorterat störst → minst (som diagrammet i Excel)
+  const tip = $("tooltip");
+  function renderChart(m) {
+    const data = m.rows.map((r, i) => ({ name: r.ms.short, v: r.J, k: r.K, idx: i }))
+      .sort((a, b) => b.v - a.v || a.idx - b.idx);
+    const el = $("chart");
+    const W = 520, labelW = 150, valW = 96, rowH = 34, barH = 20, top = 6;
+    const H = top + data.length * rowH + 24;
+    const minV = Math.min(0, ...data.map(d => d.v));
+    const maxV = Math.max(0, ...data.map(d => d.v));
+    const span = (maxV - minV) || 1;
+    const plotL = labelW, plotR = W - valW;
+    const x = v => plotL + (v - minV) / span * (plotR - plotL);
+    const x0 = x(0);
+
+    // Stödlinjer
+    const ticks = niceTicks(minV, maxV, 4);
+    let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">`;
+    ticks.forEach(t => {
+      const tx = x(t);
+      if (tx < plotL - 0.5 || tx > plotR + 0.5) return;
+      svg += `<line class="grid" x1="${tx}" x2="${tx}" y1="${top}" y2="${H - 22}"/>`;
+      svg += `<text class="val" x="${tx}" y="${H - 6}" text-anchor="middle">${shortKr(t)}</text>`;
+    });
+    data.forEach((d, i) => {
+      const y = top + i * rowH;
+      const cy = y + rowH / 2;
+      const xa = Math.min(x0, x(d.v)), w = Math.abs(x(d.v) - x0);
+      const color = d.v >= 0 ? "var(--bar-pos)" : "var(--bar-neg)";
+      const r = Math.min(4, w / 2);
+      // Rundad ände bort från nollinjen
+      let path = "";
+      if (w > 0.5) {
+        const y0 = cy - barH / 2, y1 = cy + barH / 2;
+        if (d.v >= 0) {
+          path = `M${xa},${y0} H${xa + w - r} Q${xa + w},${y0} ${xa + w},${y0 + r} V${y1 - r} Q${xa + w},${y1} ${xa + w - r},${y1} H${xa} Z`;
+        } else {
+          path = `M${xa + w},${y0} H${xa + r} Q${xa},${y0} ${xa},${y0 + r} V${y1 - r} Q${xa},${y1} ${xa + r},${y1} H${xa + w} Z`;
+        }
+      }
+      const valX = d.v >= 0 ? Math.max(x(d.v), x0) + 6 : x0 + 6;
+      svg += `<g class="row" data-i="${i}">
+        <rect class="hit" x="0" y="${y}" width="${W}" height="${rowH}"/>
+        <text class="lbl" x="${labelW - 10}" y="${cy + 4}" text-anchor="end">${d.name}</text>
+        ${path ? `<path class="barfill" d="${path}" fill="${color}"/>` : ""}
+        <text class="val" x="${valX}" y="${cy + 4}">${shortKr(d.v)}</text>
+      </g>`;
+    });
+    svg += `<line class="axis" x1="${x0}" x2="${x0}" y1="${top}" y2="${H - 22}"/>`;
+    svg += `</svg>`;
+    el.innerHTML = svg;
+
+    el.querySelectorAll(".row").forEach(g => {
+      const d = data[Number(g.dataset.i)];
+      g.addEventListener("mousemove", e => {
+        tip.hidden = false;
+        tip.innerHTML = `<b>${d.name}</b><br>Resultat/år: ${krSigned(d.v)}<br>Andel av nettopåverkan: ${isFinite(d.k) ? pct0(d.k) : "–"}`;
+        const tw = tip.offsetWidth, th = tip.offsetHeight;
+        let left = e.clientX + 14, topY = e.clientY + 14;
+        if (left + tw > window.innerWidth - 8) left = e.clientX - tw - 14;
+        if (topY + th > window.innerHeight - 8) topY = e.clientY - th - 14;
+        tip.style.left = left + "px"; tip.style.top = topY + "px";
+      });
+      g.addEventListener("mouseleave", () => { tip.hidden = true; });
+    });
+  }
+  function niceTicks(lo, hi, n) {
+    const span = hi - lo || 1;
+    const raw = span / n, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+    const step = [1, 2, 2.5, 5, 10].map(s => s * mag).find(s => s >= raw) || raw;
+    const out = [];
+    for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(Math.round(v));
+    return out;
+  }
+  function shortKr(v) {
+    const a = Math.abs(v), sign = v < 0 ? "−" : "";
+    if (a >= 1e6) return sign + nf1.format(a / 1e6) + " mkr";
+    if (a >= 1e3) return sign + nf0.format(Math.round(a / 1e3)) + " tkr";
+    return sign + nf0.format(Math.round(a)) + " kr";
+  }
+
+  function renderKpis(m) {
+    const groups = [
+      { t: "Timmar", items: [
+        ["Produktivitet", pct(m.B33)],
+        ["Snittintäkt per såld timme", kr(m.B34)],
+        ["Osåld verkstadstid", hrs(m.B35)],
+        ["Potentiell tid att sälja (av total tid)", pct(m.B36)],
+        ["Lönekostnad per såld timme", kr(m.B37)]
+      ]},
+      { t: "Produkter", items: [
+        ["Fakturerade produkter/övrigt totalt", kr(m.B40)],
+        ["Snittmarginal fakturerade produkter", pct(m.B41)],
+        ["Fakturerade produkter per såld timme", kr(m.B42)]
+      ]},
+      { t: "Arbetsordrar", items: [
+        ["Snittvinst per arbetsorder", kr(m.B45)],
+        ["Snittintäkt per arbetsorder", kr(m.B46)],
+        ["…varav timpris", kr(m.B47)],
+        ["…varav produktpris", kr(m.B48)],
+        ["Snittkostnad per arbetsorder", kr(m.B49)],
+        ["…varav lönekostnad", kr(m.B50)],
+        ["…varav produkter/material", kr(m.B51)],
+        ["…varav fasta kostnader", kr(m.B52)]
+      ]},
+      { t: "Fasta/indirekta kostnader", items: [
+        ["Fasta kostnader totalt (inkl. avskrivningar)", kr(m.B55)],
+        ["Fasta kostnader vs omsättning", pct(m.B56)],
+        ["Tomgångskostnad (fasta kostnader per osåld timme)", kr(m.B57)]
+      ]}
+    ];
+    $("kpis").innerHTML = groups.map(g => `<dl><dt>${g.t}</dt>${g.items.map(([k, v]) => `<dd><span>${k}</span><span>${v}</span></dd>`).join("")}</dl>`).join("");
+  }
+
+  // ---------- Knappar ----------
+  $("btn-reset").addEventListener("click", () => {
+    if (!confirm("Återställ alla värden till exempeldata?")) return;
+    defaults();
+    [...RR_FIELDS, ...BAS_FIELDS].forEach(f => { f.input.value = toDisplay(f, state[f.id]); f.input.closest(".field").classList.remove("invalid"); });
+    MEASURES.forEach(ms => { ms.num.value = toDisplay(ms, state[ms.id]); });
+    update();
+  });
+  $("btn-print").addEventListener("click", () => {
+    document.querySelectorAll("details").forEach(d => d.open = true);
+    window.print();
+  });
+  $("btn-theme").addEventListener("click", () => {
+    const root = document.documentElement;
+    const isDark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    root.dataset.theme = isDark ? "light" : "dark";
+    try { localStorage.setItem(STORAGE_KEY + "-theme", root.dataset.theme); } catch (e) {}
+  });
+  try { const t = localStorage.getItem(STORAGE_KEY + "-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+
+  update();
+})();
+</script>
+</body>
+</html>
